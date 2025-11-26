@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Site Blocked - FocusGuard</title>
+  <link rel="stylesheet" href="blocked.css">
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <!-- Icon -->
+      <div class="icon">🛡️</div>
+      
+      <!-- Title -->
+      <h1>Site Blocked</h1>
+      
+      <!-- Domain -->
+      <div class="domain" id="blockedDomain">Loading...</div>
+      
+      <!-- Quote -->
+      <div class="quote" id="quote">
+        <p class="quote-text">"The secret of getting ahead is getting started."</p>
+        <p class="quote-author">— Mark Twain</p>
+      </div>
+      
+      <!-- Timer -->
+      <div class="timer-section">
+        <div class="timer-label">Time Remaining</div>
+        <div class="timer" id="timer">--:--</div>
+      </div>
+      
+      <!-- Actions -->
+      <div class="actions">
+        <button class="btn btn-secondary" id="closeTab">Close Tab</button>
+        <button class="btn btn-primary" id="requestUnblock">Request Unblock</button>
+      </div>
+      
+      <!-- Pending Unblock (hidden by default) -->
+      <div class="pending-section hidden" id="pendingSection">
+        <div class="pending-message">
+          <span class="pending-icon">⏳</span>
+          <span>Unblock requested. Please wait...</span>
+        </div>
+        <div class="pending-timer" id="pendingTimer">5:00</div>
+        <div class="pending-actions">
+          <button class="btn btn-secondary" id="cancelUnblock">Cancel & Stay Blocked</button>
+          <button class="btn btn-success hidden" id="confirmUnblock">Unblock Now</button>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Footer -->
+    <div class="footer">
+      <p>FocusGuard is helping you stay focused.</p>
+    </div>
+  </div>
+
+  <script src="blocked.js"></script>
+</body>
+</html>

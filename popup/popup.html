@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FocusGuard</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header class="header">
+      <h1>🛡️ FocusGuard</h1>
+    </header>
+
+    <!-- Block Current Site Section -->
+    <section class="section">
+      <h2>Block Current Site</h2>
+      <div class="current-site" id="currentSite">Loading...</div>
+      <div class="duration-buttons">
+        <button class="btn btn-duration" data-minutes="15">15m</button>
+        <button class="btn btn-duration" data-minutes="30">30m</button>
+        <button class="btn btn-duration" data-minutes="60">1hr</button>
+        <button class="btn btn-duration" data-minutes="240">4hr</button>
+        <button class="btn btn-duration" data-minutes="480">8hr</button>
+      </div>
+    </section>
+
+    <!-- Active Blocks Section -->
+    <section class="section">
+      <div class="section-header" id="toggleActiveBlocks">
+        <h2>Active Blocks <span class="badge" id="activeBlocksCount">0</span></h2>
+        <span class="toggle-icon">▼</span>
+      </div>
+      <div class="section-content" id="activeBlocksContent">
+        <div id="activeBlocksList" class="blocks-list">
+          <div class="empty-state">No active blocks</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Add Custom Block Section -->
+    <section class="section">
+      <div class="section-header" id="toggleCustomBlock">
+        <h2>Add Custom Block</h2>
+        <span class="toggle-icon">▶</span>
+      </div>
+      <div class="section-content collapsed" id="customBlockContent">
+        <div class="form-group">
+          <label for="customDomain" class="visually-hidden">Domain to block</label>
+          <input type="text" id="customDomain" placeholder="e.g., youtube.com" class="input">
+        </div>
+        <div class="form-group">
+          <div class="duration-buttons">
+            <button class="btn btn-duration btn-small" data-custom-minutes="15">15m</button>
+            <button class="btn btn-duration btn-small" data-custom-minutes="30">30m</button>
+            <button class="btn btn-duration btn-small" data-custom-minutes="60">1hr</button>
+            <button class="btn btn-duration btn-small" data-custom-minutes="240">4hr</button>
+          </div>
+        </div>
+        <div class="form-group">
+          <div class="custom-duration">
+            <label for="customMinutes" class="visually-hidden">Block duration in minutes</label>
+            <input type="number" id="customMinutes" placeholder="Minutes" min="1" max="480" class="input input-small">
+            <button class="btn btn-primary" id="addCustomBlock">Block</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Stats Section -->
+    <section class="section stats-section">
+      <div class="stats-row">
+        <span class="stats-label">📊 Today:</span>
+        <span class="stats-value" id="todayBlocked">0 blocks prevented</span>
+      </div>
+    </section>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
