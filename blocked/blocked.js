@@ -39,7 +39,8 @@ let quotes = []
 async function loadQuotes() {
   try {
     const response = await fetch(chrome.runtime.getURL('data/quotes.json'))
-    quotes = await response.json()
+    const data = await response.json()
+    quotes = data.quotes || []
   } catch (error) {
     // Fallback quotes if JSON fails to load
     quotes = [
