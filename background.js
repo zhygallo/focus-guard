@@ -242,8 +242,16 @@ async function requestUnblock(domain) {
   if (settings.unblockDelayEscalation && attemptNumber > 1) {
     delayMinutes = Math.min(15, delayMinutes + (attemptNumber - 1) * 5)
   }
-  
-  const waitTimeSeconds = delayMinutes * 60
+
+  // Cap delay to remaining block time (no point waiting longer than the block itself)
+  const { activeBlocks = {} } = await chrome.storage.sync.get('activeBlocks')
+  const blockInfo = activeBlocks[cleanDomain]
+  if (blockInfo && blockInfo.until) {
+    const remainingBlockMinutes = Math.max(0, (blockInfo.until - Date.now()) / 60000)
+    delayMinutes = Math.min(delayMinutes, remainingBlockMinutes)
+  }
+
+  const waitTimeSeconds = Math.max(1, Math.round(delayMinutes * 60))
   
   pendingUnblocks[cleanDomain] = {
     requestedAt: Date.now(),
