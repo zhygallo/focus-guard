@@ -1,69 +1,89 @@
 /**
  * FocusGuard - Block Page Script
- * Handles the blocked site display and unblock flow
+ * Handles the blocked site display and unblock flow with memory leak fixes
  */
 
+import { formatCountdown } from '../lib/time-utils.js'
+import { api } from '../lib/messaging.js'
+
 // ============================================
-// STATE
+// STATE & CLEANUP
 // ============================================
 
 let blockedDomain = null
 let blockUntil = null
 let pendingUnblock = null
-let timerInterval = null
-let pendingInterval = null
+
+// Interval registry for cleanup
+const intervals = []
+
+function registerInterval(id) {
+  intervals.push(id)
+  return id
+}
+
+function clearAllIntervals() {
+  intervals.forEach(clearInterval)
+  intervals.length = 0
+}
+
+// Clean up on page unload
+window.addEventListener('unload', clearAllIntervals)
 
 // ============================================
-// QUOTES
+// QUOTES (loaded from JSON)
 // ============================================
 
-const quotes = [
-  { text: "The secret of getting ahead is getting started.", author: "Mark Twain" },
-  { text: "Focus on being productive instead of busy.", author: "Tim Ferriss" },
-  { text: "It's not that I'm so smart, it's just that I stay with problems longer.", author: "Albert Einstein" },
-  { text: "The successful warrior is the average man, with laser-like focus.", author: "Bruce Lee" },
-  { text: "Concentrate all your thoughts upon the work at hand.", author: "Alexander Graham Bell" },
-  { text: "Where focus goes, energy flows.", author: "Tony Robbins" },
-  { text: "The main thing is to keep the main thing the main thing.", author: "Stephen Covey" },
-  { text: "You can't depend on your eyes when your imagination is out of focus.", author: "Mark Twain" },
-  { text: "Lack of direction, not lack of time, is the problem.", author: "Zig Ziglar" },
-  { text: "Do what you can, with what you have, where you are.", author: "Theodore Roosevelt" },
-  { text: "Action is the foundational key to all success.", author: "Pablo Picasso" },
-  { text: "The way to get started is to quit talking and begin doing.", author: "Walt Disney" },
-  { text: "Your focus determines your reality.", author: "George Lucas" },
-  { text: "Simplicity boils down to two steps: Identify the essential. Eliminate the rest.", author: "Leo Babauta" },
-  { text: "Until we can manage time, we can manage nothing else.", author: "Peter Drucker" }
-]
+let quotes = []
+
+async function loadQuotes() {
+  try {
+    const response = await fetch(chrome.runtime.getURL('data/quotes.json'))
+    quotes = await response.json()
+  } catch (error) {
+    // Fallback quotes if JSON fails to load
+    quotes = [
+      { text: "The secret of getting ahead is getting started.", author: "Mark Twain" },
+      { text: "Focus on being productive instead of busy.", author: "Tim Ferriss" },
+      { text: "Where focus goes, energy flows.", author: "Tony Robbins" }
+    ]
+  }
+}
 
 // ============================================
 // INITIALIZATION
 // ============================================
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  await loadQuotes()
   parseUrlParams()
   displayQuote()
   setupEventListeners()
   startTimers()
-  checkPendingUnblock()
+  await checkPendingUnblock()
 })
 
 function parseUrlParams() {
   const params = new URLSearchParams(window.location.search)
   blockedDomain = params.get('domain')
-  blockUntil = parseInt(params.get('until'))
-  
+  const untilParam = params.get('until')
+  blockUntil = untilParam ? parseInt(untilParam, 10) : null
+
   if (blockedDomain) {
     document.getElementById('blockedDomain').textContent = blockedDomain
+    document.title = `${blockedDomain} Blocked - FocusGuard`
   }
-  
-  // Update page title
-  document.title = `${blockedDomain} Blocked - FocusGuard`
 }
 
 function displayQuote() {
+  if (quotes.length === 0) return
+
   const quote = quotes[Math.floor(Math.random() * quotes.length)]
-  document.querySelector('.quote-text').textContent = `"${quote.text}"`
-  document.querySelector('.quote-author').textContent = `— ${quote.author}`
+  const textEl = document.querySelector('.quote-text')
+  const authorEl = document.querySelector('.quote-author')
+
+  if (textEl) textEl.textContent = `"${quote.text}"`
+  if (authorEl) authorEl.textContent = `— ${quote.author}`
 }
 
 // ============================================
@@ -72,40 +92,29 @@ function displayQuote() {
 
 function startTimers() {
   updateBlockTimer()
-  timerInterval = setInterval(updateBlockTimer, 1000)
+  registerInterval(setInterval(updateBlockTimer, 1000))
 }
 
 function updateBlockTimer() {
   if (!blockUntil) return
-  
-  const now = Date.now()
-  const remaining = blockUntil - now
-  
+
+  const remaining = blockUntil - Date.now()
+
   if (remaining <= 0) {
     // Block expired - redirect to the site
-    clearInterval(timerInterval)
+    clearAllIntervals()
     document.getElementById('timer').textContent = '00:00'
-    
+
     // Wait a moment then redirect
     setTimeout(() => {
-      window.location.href = `https://${blockedDomain}`
+      if (blockedDomain) {
+        window.location.href = `https://${blockedDomain}`
+      }
     }, 1000)
     return
   }
-  
-  // Format remaining time
-  const hours = Math.floor(remaining / 3600000)
-  const minutes = Math.floor((remaining % 3600000) / 60000)
-  const seconds = Math.floor((remaining % 60000) / 1000)
-  
-  let timeString
-  if (hours > 0) {
-    timeString = `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
-  } else {
-    timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`
-  }
-  
-  document.getElementById('timer').textContent = timeString
+
+  document.getElementById('timer').textContent = formatCountdown(remaining)
 }
 
 // ============================================
@@ -113,60 +122,70 @@ function updateBlockTimer() {
 // ============================================
 
 async function checkPendingUnblock() {
-  const pending = await sendMessage({ action: 'getPendingUnblocks' })
-  
-  if (pending[blockedDomain]) {
-    pendingUnblock = pending[blockedDomain]
+  if (!blockedDomain) return
+
+  const response = await api.getPendingUnblocks()
+
+  if (response.success === false) return
+
+  if (response[blockedDomain]) {
+    pendingUnblock = response[blockedDomain]
     showPendingSection()
     startPendingTimer()
   }
 }
 
 function showPendingSection() {
-  document.querySelector('.actions').classList.add('hidden')
-  document.getElementById('pendingSection').classList.remove('hidden')
+  const actions = document.querySelector('.actions')
+  const pending = document.getElementById('pendingSection')
+
+  if (actions) actions.classList.add('hidden')
+  if (pending) pending.classList.remove('hidden')
 }
 
 function hidePendingSection() {
-  document.querySelector('.actions').classList.remove('hidden')
-  document.getElementById('pendingSection').classList.add('hidden')
-  
-  if (pendingInterval) {
-    clearInterval(pendingInterval)
-    pendingInterval = null
-  }
+  const actions = document.querySelector('.actions')
+  const pending = document.getElementById('pendingSection')
+
+  if (actions) actions.classList.remove('hidden')
+  if (pending) pending.classList.add('hidden')
+
+  pendingUnblock = null
 }
 
 function startPendingTimer() {
   updatePendingTimer()
-  pendingInterval = setInterval(updatePendingTimer, 1000)
+  registerInterval(setInterval(updatePendingTimer, 1000))
 }
 
 function updatePendingTimer() {
   if (!pendingUnblock) return
-  
-  const now = Date.now()
-  const remaining = pendingUnblock.unlocksAt - now
-  
+
+  const remaining = pendingUnblock.unlocksAt - Date.now()
+
   if (remaining <= 0) {
     // Delay complete - show unblock button
-    clearInterval(pendingInterval)
-    document.getElementById('pendingTimer').textContent = 'Ready!'
-    document.querySelector('.pending-message span:last-child').textContent = 'You can now unblock this site.'
-    document.querySelector('.pending-icon').textContent = '✓'
-    document.querySelector('.pending-icon').style.animation = 'none'
-    
-    document.getElementById('cancelUnblock').classList.add('hidden')
-    document.getElementById('confirmUnblock').classList.remove('hidden')
+    const timerEl = document.getElementById('pendingTimer')
+    const messageEl = document.querySelector('.pending-message span:last-child')
+    const iconEl = document.querySelector('.pending-icon')
+    const cancelBtn = document.getElementById('cancelUnblock')
+    const confirmBtn = document.getElementById('confirmUnblock')
+
+    if (timerEl) timerEl.textContent = 'Ready!'
+    if (messageEl) messageEl.textContent = 'You can now unblock this site.'
+    if (iconEl) {
+      iconEl.textContent = '✓'
+      iconEl.style.animation = 'none'
+    }
+    if (cancelBtn) cancelBtn.classList.add('hidden')
+    if (confirmBtn) confirmBtn.classList.remove('hidden')
     return
   }
-  
-  // Format remaining time
-  const minutes = Math.floor(remaining / 60000)
-  const seconds = Math.floor((remaining % 60000) / 1000)
-  
-  document.getElementById('pendingTimer').textContent = 
-    `${minutes}:${seconds.toString().padStart(2, '0')}`
+
+  const timerEl = document.getElementById('pendingTimer')
+  if (timerEl) {
+    timerEl.textContent = formatCountdown(remaining)
+  }
 }
 
 // ============================================
@@ -175,66 +194,92 @@ function updatePendingTimer() {
 
 function setupEventListeners() {
   // Close tab
-  document.getElementById('closeTab').addEventListener('click', () => {
-    window.close()
-  })
-  
+  const closeBtn = document.getElementById('closeTab')
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      window.close()
+    })
+  }
+
   // Request unblock
-  document.getElementById('requestUnblock').addEventListener('click', async () => {
-    const response = await sendMessage({
-      action: 'requestUnblock',
-      domain: blockedDomain
-    })
-    
-    if (response.success) {
-      pendingUnblock = {
-        unlocksAt: Date.now() + (response.waitTime * 1000)
-      }
-      showPendingSection()
-      startPendingTimer()
-    } else if (response.error === 'already_pending') {
-      // Already pending - show the section
-      pendingUnblock = {
-        unlocksAt: Date.now() + (response.remainingTime * 1000)
-      }
-      showPendingSection()
-      startPendingTimer()
-    }
-  })
-  
+  const requestBtn = document.getElementById('requestUnblock')
+  if (requestBtn) {
+    requestBtn.addEventListener('click', handleRequestUnblock)
+  }
+
   // Cancel unblock
-  document.getElementById('cancelUnblock').addEventListener('click', async () => {
-    await sendMessage({
-      action: 'cancelUnblock',
-      domain: blockedDomain
-    })
-    
-    pendingUnblock = null
-    hidePendingSection()
-  })
-  
+  const cancelBtn = document.getElementById('cancelUnblock')
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', handleCancelUnblock)
+  }
+
   // Confirm unblock
-  document.getElementById('confirmUnblock').addEventListener('click', async () => {
-    const response = await sendMessage({
-      action: 'confirmUnblock',
-      domain: blockedDomain
-    })
-    
-    if (response.success) {
-      // Redirect to the site
-      window.location.href = `https://${blockedDomain}`
+  const confirmBtn = document.getElementById('confirmUnblock')
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', handleConfirmUnblock)
+  }
+}
+
+async function handleRequestUnblock() {
+  if (!blockedDomain) return
+
+  const response = await api.requestUnblock(blockedDomain)
+
+  if (response.success) {
+    pendingUnblock = {
+      unlocksAt: Date.now() + (response.waitTime * 1000)
     }
-  })
+    showPendingSection()
+    startPendingTimer()
+  } else if (response.code === 'unblock_pending' && response.details?.remainingTime) {
+    // Already pending - show the section with remaining time
+    pendingUnblock = {
+      unlocksAt: Date.now() + (response.details.remainingTime * 1000)
+    }
+    showPendingSection()
+    startPendingTimer()
+  } else {
+    showToast(response.error || 'Failed to request unblock', 'error')
+  }
+}
+
+async function handleCancelUnblock() {
+  if (!blockedDomain) return
+
+  const response = await api.cancelUnblock(blockedDomain)
+  if (response.success) {
+    hidePendingSection()
+  } else {
+    showToast(response.error || 'Failed to cancel', 'error')
+  }
+}
+
+async function handleConfirmUnblock() {
+  if (!blockedDomain) return
+
+  const response = await api.confirmUnblock(blockedDomain)
+
+  if (response.success) {
+    // Redirect to the site
+    window.location.href = `https://${blockedDomain}`
+  } else if (response.code === 'unblock_delay_not_complete') {
+    const remaining = Math.ceil((response.details?.remainingTime || 0) / 60)
+    showToast(`Wait ${remaining} more minute${remaining !== 1 ? 's' : ''}`, 'error')
+  } else {
+    showToast(response.error || 'Failed to unblock', 'error')
+  }
 }
 
 // ============================================
-// UTILITIES
+// TOAST NOTIFICATIONS
 // ============================================
 
-function sendMessage(message) {
-  return new Promise((resolve) => {
-    chrome.runtime.sendMessage(message, (response) => {
-      resolve(response || {})
-    })
-  })
+function showToast(message, type = 'info') {
+  const toast = document.getElementById('toast')
+  toast.textContent = message
+  toast.className = `toast ${type} show`
+
+  setTimeout(() => {
+    toast.classList.remove('show')
+  }, 3000)
 }
